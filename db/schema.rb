@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema.define(version: 2021_06_13_072330) do
+ActiveRecord::Schema.define(version: 2022_02_28_074041) do
 
   create_table "announcements", options: "ENGINE=InnoDB DEFAULT CHARSET=utf8mb3", force: :cascade do |t|
     t.string "title"
@@ -138,6 +138,17 @@ ActiveRecord::Schema.define(version: 2021_06_13_072330) do
     t.index ["assignment_id"], name: "index_submission_similarity_processes_on_assignment_id"
   end
 
+  create_table "submission_similarity_skeleton_mappings", options: "ENGINE=InnoDB DEFAULT CHARSET=utf8mb3", force: :cascade do |t|
+    t.bigint "submission_similarity_mapping_id"
+    t.integer "start_line1"
+    t.integer "end_line1"
+    t.integer "start_line2"
+    t.integer "end_line2"
+    t.datetime "created_at", precision: 6, null: false
+    t.datetime "updated_at", precision: 6, null: false
+    t.index ["submission_similarity_mapping_id"], name: "on_submission_similarity_mapping_id"
+  end
+
   create_table "submissions", options: "ENGINE=InnoDB DEFAULT CHARSET=utf8mb3", force: :cascade do |t|
     t.text "lines", size: :long
     t.integer "assignment_id", null: false
@@ -161,7 +172,7 @@ ActiveRecord::Schema.define(version: 2021_06_13_072330) do
   create_table "users", options: "ENGINE=InnoDB DEFAULT CHARSET=utf8mb3", force: :cascade do |t|
     t.string "name"
     t.string "full_name"
-    t.string "password_digest", default: "$2a$12$BEjX4o6KQ8HsgdP7JV6NEuVygw6U5kaKQrvxk9U3xtotcS92.0BlG"
+    t.string "password_digest", default: "$2a$12$NYDoxK7MCZtPfggG52yteOLLoziWm6Mt0IN2w911QNJ.XWBHUa2gy"
     t.boolean "is_admin", default: false, null: false
     t.string "id_string"
     t.datetime "created_at", precision: 6, null: false

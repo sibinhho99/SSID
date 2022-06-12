@@ -1,3 +1,5 @@
+<script src="https://unpkg.com/jszip@3.7.1/dist/jszip.js" type="text/javascript"></script>
+
 <%= form_for([@course, @assignment]) do |f| %>
   <% if @assignment.errors.any? %>
     <div id="error_explanation">
@@ -31,6 +33,7 @@
   <div class="col-12">
     <%= f.label :file, "Student submissions (zip) \u24D8", title: "The zip file should contain one folder for each student's code files; folders are named according to student ID; Name your folder as \"skeleton\" for the codes you wish to exclude from the system", class: 'form-label' %>
     <%= f.file_field :file, class: 'form-control' %>
+    <ul id="student_submissions_zip_files_list"></ul>
   </div>
   
   <div class="col-12">
@@ -40,6 +43,7 @@
   <div id="map_file_details" style="display:none;" class="col-12">
   <%= f.label :mapfile, "Mapping file (csv) \u24D8", title: "The zip file should contain one folder for each student's code files; folders are named according to student ID; Name your folder as \"skeleton\" for the codes you wish to exclude from the system", class: 'form-label' %>
   <%= f.file_field :mapfile, accept: '.csv', class: 'form-control' %>
+  <ul id="map_files_list"></ul>
 
   </div>
   <div>
@@ -67,5 +71,102 @@
       document.querySelector('#assignment_ngram_size').disabled = true;
     }
   })
+  
+  $("#assignment_file").attr("onchange", "onAssignmentFileInputChange(this)");
+
+  function onAssignmentFileInputChange(fileInput) {
+    if (fileInput.files[0] == undefined) {
+      return;
+    }
+    let reader = new FileReader();
+    reader.onload = (ev) => {
+      JSZip.loadAsync(ev.target.result)
+        .then(function (zip) {
+          var zipObjectNames = Object.keys(zip.files);
+          var fileNames = zipObjectNames.filter(
+            (x) => x.charAt(x.length - 1) != "/"
+          );
+  
+          // Reset existing file list
+          $("#student_submissions_zip_files_list").empty();
+  
+          // Display the first ten files
+          $("#student_submissions_zip_files_list").prepend("<br>");
+          for (let i = 0; i < Math.min(10, fileNames.length); i++) {
+            let fileName = fileNames[i];
+            $("#student_submissions_zip_files_list").append(
+              "<li><a href=# id=preview_file_" + i + ">" + fileName + "</a></li>"
+            );
+  
+            let handleClick = function () {
+              zip
+                .file(fileName)
+                .async("string")
+                .then((fileContent) => {
+                  previewRawFile(fileName, fileContent);
+                  return false;
+                });
+            };
+  
+            $("#preview_file_" + i).click(handleClick);
+          }
+  
+          // Indicate that there are more files
+          if (fileNames.length > 10) {
+            $("#student_submissions_zip_files_list").append("<li>...</li>");
+          }
+        })
+        .catch((err) => {
+          console.error("Error trying to unzip and process", filename);
+          console.error(err);
+        });
+    };
+    reader.onerror = (err) => {
+      console.error("Error trying to read file", err);
+    };
+    reader.readAsArrayBuffer(fileInput.files[0]);
+  }
+
+  $("#assignment_mapfile").attr("onchange", "onAssignmentMapFileInputChange(this)");
+
+  function onAssignmentMapFileInputChange(fileInput) {
+    if (fileInput.files[0] == undefined) {
+      return;
+    }
+    
+    let fileName = fileInput.files[0].name;
+    let reader = new FileReader();
+
+    // Reset existing file list
+    $("#map_files_list").empty();
+
+    // Show newly chosen file
+    $("#map_files_list").prepend("<br>");
+
+    $("#map_files_list").append(
+      "<li><a href=# id=preview_map_file>" + fileName + "</a></li>"
+    );
+
+    reader.onload = function() {
+      callback(reader.result);
+    }
+    
+    reader.readAsText(fileInput.files[0]); 
+
+    reader.onerror = (err) => {
+      console.error("Error trying to read file", err);
+    };
+
+    let handleClick = () => previewRawFile(fileName, reader.result);
+
+    $("#preview_map_file").click(handleClick);
+  }
+
+  function previewRawFile(fileName, fileContent) {
+    let newWindow = window.open("about:blank");
+    newWindow.document.write("<title>" + fileName + "</title>");
+    newWindow.document.write("<pre>" + fileContent + "</pre>");
+  }
+  
 </script>
 
