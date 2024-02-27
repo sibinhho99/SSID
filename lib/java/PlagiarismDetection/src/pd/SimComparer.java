@@ -17,6 +17,9 @@ along with SSID.  If not, see <http://www.gnu.org/licenses/>.
  
  package pd;
 
+import java.io.BufferedWriter;
+import java.io.FileWriter;
+import java.io.IOException;
 import java.math.BigInteger;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
@@ -25,10 +28,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-
 import pd.utils.Pair;
 import pd.utils.Result;
 import pd.utils.Submission;
@@ -42,12 +41,31 @@ import pd.utils.NGrams.NGramList;
 import pd.utils.Tokens.TokenList;
 import pd.utils.Tokens.TokenSSID;
 public final class SimComparer {
-
 	private static SimComparer instance = new SimComparer();
 	private static final String SKELETON = "skeleton";
 	private static final String REFERENCES_PREFIX = "references_";
-	
-	private static Logger logger = LogManager.getLogger();
+	private RKHasher RKHasher1;
+	private RKHasher RKHasher2;
+
+	class Logger {
+		private String filename = "output.txt";
+
+		public void info(Object... content) {
+			try (BufferedWriter writer = new BufferedWriter(new FileWriter(filename))) {
+				for (Object str : content) {
+					writer.write(str.toString());
+					writer.write("\n");
+				}
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
+		}
+		public void debug(Object... content) {
+			info(content);
+		} 
+	}
+
+	private Logger logger = new Logger();
 	private static final int WINDOW_SIZE = 4;
 
 	@SuppressWarnings("unused")
@@ -85,11 +103,11 @@ public final class SimComparer {
 				s1Tokens = s1.getCodeTokens();
 				s2Tokens = s2.getCodeTokens();
 				if (s1Tokens.size() < s2Tokens.size()) {
-					result = compareSubmissions(s1, s2, skeleton, nGramSize,
+					result = compareSubmissionsPairwise(s1, s2, skeleton, nGramSize,
 							minMatch);
 					computeSims(s1Tokens, s2Tokens, result);
 				} else {
-					result = compareSubmissions(s2, s1, skeleton, nGramSize,
+					result = compareSubmissionsPairwise(s2, s1, skeleton, nGramSize,
 							minMatch);
 					computeSims(s2Tokens, s1Tokens, result);
 				}
@@ -107,16 +125,16 @@ public final class SimComparer {
 
 			for (int j = 0; j < referenceSubmissions.size(); j++) {
 				s2 = referenceSubmissions.get(j);
-
 				logger.info("Start comparing submissions: {} vs {}", s1.getID(), s2.getID());
 				s1Tokens = s1.getCodeTokens();
 				s2Tokens = s2.getCodeTokens();
+
 				if (s1Tokens.size() < s2Tokens.size()) {
-					result = compareSubmissions(s1, s2, skeleton, nGramSize,
+					result = compareSubmissionsPairwise(s1, s2, skeleton, nGramSize,
 							minMatch);
 					computeSims(s1Tokens, s2Tokens, result);
 				} else {
-					result = compareSubmissions(s2, s1, skeleton, nGramSize,
+					result = compareSubmissionsPairwise(s2, s1, skeleton, nGramSize,
 							minMatch);
 					computeSims(s2Tokens, s1Tokens, result);
 				}
@@ -200,11 +218,11 @@ public final class SimComparer {
 				s1Tokens = s1.getCodeTokens();
 				s2Tokens = s2.getCodeTokens();
 				if (s1Tokens.size() < s2Tokens.size()) {
-					result = compareSubmissions(s1, s2, skeleton, nGramSize,
+					result = compareSubmissionsPairwise(s1, s2, skeleton, nGramSize,
 							minMatch);
 					computeSims(s1Tokens, s2Tokens, result);
 				} else {
-					result = compareSubmissions(s2, s1, skeleton, nGramSize,
+					result = compareSubmissionsPairwise(s2, s1, skeleton, nGramSize,
 							minMatch);
 					computeSims(s2Tokens, s1Tokens, result);
 				}
@@ -404,8 +422,7 @@ public final class SimComparer {
 		return minGram;
 	}
 	
-
-	private Result compareSubmissions(Submission s1, Submission s2,
+	private Result compareSubmissionsPairwise(Submission s1, Submission s2,
 			Submission skeleton, int nGramSize, int minMatch) {
 
 		NGramList s1NGrams = s1.getNGramList(), s2NGrams = s2.getNGramList();
@@ -416,8 +433,8 @@ public final class SimComparer {
 			gst(s1NGrams, s2.getNGramIndexingTable(),
 					skeleton.getNGramIndexingTable(), s1.getCodeTokens(),
 					s2.getCodeTokens(), skeleton.getCodeTokens(), minMatch,
-					result.getTokenIndexMappings());
-
+					result.getTokenIndexMappings(), s1, s2, skeleton);
+			
 			getCodeMapping(s1.getCodeTokens(), s2.getCodeTokens(), result);
 
 			return result;
@@ -472,7 +489,8 @@ public final class SimComparer {
 			HashMap<NGram, ArrayList<Integer>> s2NGramIndices,
 			HashMap<NGram, ArrayList<Integer>> bNGramIndices,
 			TokenList s1Tokens, TokenList s2Tokens, TokenList bTokens,
-			int minMatch, ArrayList<Mapping> tokenMappings) {
+			int minMatch, ArrayList<Mapping> tokenMappings, Submission s1, Submission s2,
+			Submission skeleton) {
 
 		int nGramSize = s1NGrams.size() > 0 ? NGram.getNGramSize() : 0;
 
@@ -480,13 +498,20 @@ public final class SimComparer {
 
 		int[] maxMatch = new int[1];
 
+		// Calculate hash values for all substring of length minMatch in s1 and s2
+		// TODO: convert this to more precise terminology
+		RKHasher1 = new RKHasher(minMatch, s1.getNGramsStartingStmtsList());
+		RKHasher2 = new RKHasher(minMatch, s2.getNGramsStartingStmtsList());
+		
+
 		do {
 			maxMatch[0] = minMatch;
 			mappings = new ArrayList<Mapping>();
 			mappings = gstPhase1(s1Tokens, s1NGrams, s2NGramIndices, s2Tokens,
-					maxMatch, mappings);
+					maxMatch, mappings, s1, s2, skeleton, minMatch);
+			
 			gstPhase2(mappings, s1Tokens, nGramSize, s1NGrams, s2Tokens,
-					bTokens, bNGramIndices, minMatch, tokenMappings);
+					bTokens, bNGramIndices, minMatch, tokenMappings, s1, s2, skeleton);
 
 		} while (maxMatch[0] > minMatch);
 	}
@@ -494,40 +519,67 @@ public final class SimComparer {
 	private ArrayList<Mapping> gstPhase1(TokenList s1Tokens,
 			NGramList s1NGrams,
 			HashMap<NGram, ArrayList<Integer>> s2NGramIndices,
-			TokenList s2Tokens, int[] maxMatch, ArrayList<Mapping> mappings) {
-
-		// curCSMapped = current countable statement mapped
-		// curNCSMapped = current non-countable statement mapped
-		int s1EndIndex, s2EndIndex, curCSMapped, curNCSMapped, curTotalStatementMapped, s1EndOfStmtIndex, s2StartIndex, s2EndOfStmtIndex;
+			TokenList s2Tokens, int[] maxMatch, ArrayList<Mapping> mappings,
+			Submission s1, Submission s2, Submission skeleton, int minMatch) {
+		 
+		int s1EndIndex, s2EndIndex, curCSMapped, curNCSMapped, curTotalStatementMapped, 
+			s1EndOfStmtIndex, s2StartIndex, s2EndOfStmtIndex;
 		TokenSSID s1Token, s2Token;
-		HashMap<Integer, Integer> s2Matches;
-		ArrayList<Integer> s2Indices;
-		NGram s1NGram;
 
-		for (int s1StartIndex : s1Tokens.getStartOfStmtTokenIndices()) {
-			if (s1NGrams.size() <= s1StartIndex
+		// Get index of first unmarked NGram in s1NGramsStartingStmtsList.
+		// It suffices to check whether or not first token of current NGram is marked.
+		int firstUnmarkedNGramIdxS2NGramsStartingStmtsList = 0;
+		for (int i = 0; i < s2.getNGramsStartingStmtsList().size(); i++) {
+			int tokenIdx = s2.getTokenIndexOfLoc(s2.getNGramsStartingStmtsList().get(i).codeStartIndex());
+
+			if (!s2Tokens.isTokenMarked(tokenIdx)) {
+				firstUnmarkedNGramIdxS2NGramsStartingStmtsList = i;
+				break;
+			}
+		}
+
+		// Terminates if unmarked index found is too close to end of list and thus we can't find any more match
+		if (firstUnmarkedNGramIdxS2NGramsStartingStmtsList + minMatch > s2.getNGramsStartingStmtsList().size() - 1) {
+			return mappings;
+		}
+
+		// Get index of first unmarked NGram in s1NGramsStartingStmtsList.
+		// It suffices to check whether or not first token of current NGram is marked.
+		int firstUnmarkedNGramIdxS1NGramsStartingStmtsList = 0;
+		for (int i = 0; i < s1.getNGramsStartingStmtsList().size(); i++) {
+			int tokenIdx = s1.getTokenIndexOfLoc(s1.getNGramsStartingStmtsList().get(i).codeStartIndex());
+			if (!s1Tokens.isTokenMarked(tokenIdx)) {
+				firstUnmarkedNGramIdxS1NGramsStartingStmtsList = i;
+				break;
+			}
+		}
+
+		// Terminates if unmarked index found is too close to end of list and thus we can't find any more match
+		if (firstUnmarkedNGramIdxS1NGramsStartingStmtsList + maxMatch[0] > s1.getNGramsStartingStmtsList().size() - 1) {
+			return mappings;
+		}
+
+		for (int s1NGramIndex = firstUnmarkedNGramIdxS1NGramsStartingStmtsList; s1NGramIndex < s1.getNGramsStartingStmtsList().size(); s1NGramIndex++) {
+			int s1StartIndex = s1.getTokenIndexOfLoc(s1.getNGramsStartingStmtsList().get(s1NGramIndex).codeStartIndex());
+
+			if (s1.getNGramsStartingStmtsList().size() <= s1NGramIndex
+					|| s1NGramIndex + maxMatch[0] > s1.getNGramsStartingStmtsList().size() - 1
 					|| s1Tokens.isTokenMarked(s1StartIndex)) {
 				continue;
 			}
 
-			s1NGram = s1NGrams.get(s1StartIndex);
-			// logger.debug("The n-gram is: {} ", s1NGram.getTokenList().toString());
-			
-			if (s2NGramIndices.containsKey(s1NGram)) {
-				s2Indices = s2NGramIndices.get(s1NGram);
-				s2Matches = new HashMap<Integer, Integer>();
-				for (int index : s2Indices) {
-					if (s2Tokens.isTokenMarked(index)) {
-						continue;
-					}
-					s2Matches.put(index, index);
-				}
-				for (Map.Entry<Integer, Integer> s2Match : s2Matches.entrySet()) {
+			int hashStartingFromS1NGramIndex = RKHasher1.getHashStartingFrom(s1NGramIndex);
+			NGram s1NGram = s1.getNGramsStartingStmtsList().get(s1NGramIndex);
+		
+			if (RKHasher2.precomputedHashesContains(hashStartingFromS1NGramIndex)) {	
+				for (int s2Match: RKHasher2.getMatchingStartPositions(hashStartingFromS1NGramIndex)) {
 					s1EndIndex = s1StartIndex;
 					curCSMapped = 0;
 					curNCSMapped = 0;
-					s2EndIndex = s2Match.getValue();
+					s2EndIndex = s2Match;
 					s1EndOfStmtIndex = -1;
+
+					// Try to extend the match as much as possible
 					while (s1Tokens.size() > s1EndIndex
 							&& s2Tokens.size() > s2EndIndex
 							&& (s1Token = s1Tokens.get(s1EndIndex))
@@ -548,9 +600,10 @@ public final class SimComparer {
 					}
 
 					curTotalStatementMapped = curCSMapped + curNCSMapped;
+
 					if (curTotalStatementMapped >= maxMatch[0]) {
 						s1Token = s1Tokens.get(s1EndOfStmtIndex);
-						s2StartIndex = s2Match.getKey();
+						s2StartIndex = s2Match;
 						s2EndOfStmtIndex = s1EndOfStmtIndex - s1StartIndex
 								+ s2StartIndex;
 						s2Token = s2Tokens.get(s2EndOfStmtIndex);
@@ -591,7 +644,7 @@ public final class SimComparer {
 			int nGramSize, NGramList s1NGrams, TokenList s2Tokens,
 			TokenList bTokens,
 			HashMap<NGram, ArrayList<Integer>> bNGramIndices, int minMatch,
-			ArrayList<Mapping> tokenMappings) {
+			ArrayList<Mapping> tokenMappings, Submission s1, Submission s2, Submission skeleton) {
 
 		NGramList s1RegionNGrams;
 		TokenList s1RegionTokens;
@@ -636,9 +689,9 @@ public final class SimComparer {
 			}
 
 			bMappings = new ArrayList<Mapping>();
-			if (bTokens != null) {
+			if (bTokens != null && s1RegionNGrams.size() > 0) {
 				gst(s1RegionNGrams, bNGramIndices, null, s1RegionTokens,
-						bTokens, null, minMatch, bMappings);
+						bTokens, null, minMatch, bMappings, s1, s2, skeleton);
 				mappedCountableStmt = m.getMappedCountableStmtCount();
 				// logger.debug("Mapping is: {} ", m.toString());
 

@@ -18,6 +18,10 @@ along with SSID.  If not, see <http://www.gnu.org/licenses/>.
 package pd.utils;
 
 import pd.utils.NGrams.*;
+
+import java.io.BufferedWriter;
+import java.io.FileWriter;
+import java.io.IOException;
 import java.util.*;
 import pd.utils.Tokens.*;
 
@@ -30,7 +34,9 @@ public final class Submission {
 	private TokenList codeTokens = new TokenList();
 	private NGramList nGramList = new NGramList();
 	private HashMap<NGram, ArrayList<Integer>> nGramIndexingTable = new HashMap<NGram, ArrayList<Integer>>();
+	private NGramList nGramsStartingStmtsList = new NGramList();
 	private boolean isSkeletonCode = false;
+	private Map<Integer, Integer> tokenIndexOfLoc = new HashMap<>();
 
 	private ArrayList<FingerPrint> submissionFingerPrints = new ArrayList<FingerPrint>();
 	private ArrayList<String> possibleRelatedDocuments = new ArrayList<String>();
@@ -51,6 +57,12 @@ public final class Submission {
 
 	public void setCodeTokens(TokenList tokens) {
 		codeTokens = tokens;
+		for (int tokenIndex = 0; tokenIndex < tokens.size(); tokenIndex++) {
+			TokenSSID c = tokens.get(tokenIndex);
+			for (int i = c.getCodeStartIndex(); i <= c.getCodeEndIndex(); i++) {
+				tokenIndexOfLoc.put(i, tokenIndex);
+			}
+		}
 	}
 
 	public TokenList getCodeTokens() {
@@ -106,6 +118,7 @@ public final class Submission {
 					nGramIndexingTable.put(n, indices);
 				}
 				indices.add(i);
+				nGramsStartingStmtsList.add(n);
 			}
 			i++;
 		}
@@ -136,4 +149,18 @@ public final class Submission {
 		this.submissionFingerPrints = submissionFingerPrints;
 	}	
 	
+
+	public NGramList getNGramsStartingStmtsList() {
+		return this.nGramsStartingStmtsList;
+	}
+
+	public int getTokenIndexOfLoc(int loc) {
+		// for (int i=0; i< codeTokens.size(); i++) {
+		// 	if (this.codeTokens.get(i).getCodeStartIndex() == loc) {
+		// 		return i;
+		// 	}
+		// }
+		// return -1;
+		return tokenIndexOfLoc.get(loc);
+	}
 }
